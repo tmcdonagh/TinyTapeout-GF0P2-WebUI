@@ -1,0 +1,62 @@
+name: Build firmware
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attach binaries to releases
+      actions: write    # upload build artifacts
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Build firmware
+        run: pio run
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-binaries
+          path: |
+            .pio/build/firebeetle32/firmware.bin
+            .pio/build/firebeetle32/bootloader.bin
+            .pio/build/firebeetle32/partitions.bin
+
+      - name: Attach binaries to release
+        if: github.event_name == 'release' && github.event.action == 'published'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            .pio/build/firebeetle32/firmware.bin
+            .pio/build/firebeetle32/bootloader.bin
+            .pio/build/firebeetle32/partitions.bin
