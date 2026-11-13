@@ -1,0 +1,8 @@
+.pio/
+.vscode/
+build/
+sdkconfig*
+secrets.h
+.venv/
+__pycache__/
+.DS_Store

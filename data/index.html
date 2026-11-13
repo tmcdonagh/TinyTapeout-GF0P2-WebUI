@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tiny Tapeout GF0P2 Showcase</title>
+    <style>
+        :root {
+            --bg: #111;
+            --panel: #1a1a1a;
+            --text: #eee;
+            --accent: #0f0;
+            --muted: #888;
+            --danger: #f44;
+        }
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 480px;
+            background: var(--panel);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 1.4rem;
+        }
+        .subtitle {
+            color: var(--muted);
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+        .section:last-child {
+            border-bottom: none;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        input[type="number"] {
+            background: #222;
+            border: 1px solid #444;
+            color: var(--text);
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 1rem;
+            width: 100px;
+        }
+        button {
+            background: #333;
+            border: 1px solid #555;
+            color: var(--text);
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+        button:hover {
+            background: #444;
+        }
+        button.primary {
+            background: #2a4;
+            border-color: #4c6;
+        }
+        button.primary:hover {
+            background: #3b5;
+        }
+        button.danger {
+            background: #522;
+            border-color: #844;
+        }
+        button.danger:hover {
+            background: #633;
+        }
+        .presets {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .presets button {
+            padding: 6px 10px;
+            font-size: 0.8rem;
+        }
+        .freq-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1rem;
+        }
+        .freq-display input {
+            width: 120px;
+        }
+        .leds {
+            display: flex;
+            gap: 8px;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        .led {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .led-dot {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #300;
+            box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+            transition: background 0.1s;
+        }
+        .led-dot.on {
+            background: var(--accent);
+            box-shadow: 0 0 10px var(--accent);
+        }
+        .led-label {
+            font-size: 0.7rem;
+            color: var(--muted);
+        }
+        .status {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: 4px;
+        }
+        .error {
+            color: var(--danger);
+            font-size: 0.85rem;
+            margin-top: 6px;
+        }
+        .frame-section {
+            text-align: center;
+        }
+        .frame-section canvas {
+            max-width: 100%;
+            height: auto;
+            image-rendering: pixelated;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #000;
+        }
+        .capture-status {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-top: 8px;
+            min-height: 1.2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tiny Tapeout GF0P2</h1>
+        <div class="subtitle">Web Showcase Controller</div>
+
+        <div class="section">
+            <label>Project (0–51)</label>
+            <div class="row">
+                <input type="number" id="projectInput" min="0" max="51" value="0">
+                <button class="primary" onclick="selectProject()">Select</button>
+            </div>
+            <div class="status" id="projectStatus">Current: 0</div>
+        </div>
+
+        <div class="section">
+            <label>Clock</label>
+            <div class="freq-display">
+                <span id="freqValue">0</span> Hz
+                <button onclick="editFreq()">✎</button>
+            </div>
+            <div class="presets">
+                <button onclick="setClock(10)">10 Hz</button>
+                <button onclick="setClock(100)">100 Hz</button>
+                <button onclick="setClock(1000)">1 kHz</button>
+                <button onclick="setClock(10000)">10 kHz</button>
+                <button onclick="setClock(100000)">100 kHz</button>
+            </div>
+            <div class="row" style="margin-top: 12px;">
+                <button class="primary" id="runBtn" onclick="toggleClock()">Run</button>
+                <button onclick="stepClock()">Step</button>
+            </div>
+            <div class="status" id="clockStatus">Stopped</div>
+        </div>
+
+        <div class="section">
+            <label>Project inputs (ui_in)</label>
+            <div class="row" style="gap: 16px;">
+                <label style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                    <input type="checkbox" id="tileCheck" onchange="setUiIn()">
+                    tile
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                    <input type="checkbox" id="solidColorCheck" onchange="setUiIn()">
+                    solid color
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                    <input type="checkbox" id="resetCheck" onchange="setReset()">
+                    reset (assert)
+                </label>
+            </div>
+            <div class="status" id="uiInStatus">ui_in=0x00, u_rst_n=LOW</div>
+        </div>
+
+        <div class="section">
+            <label>uo_out</label>
+            <div class="leds" id="leds">
+                <!-- LEDs generated by JS -->
+            </div>
+            <div class="status" id="uoOutValue">0b00000000 (0x00)</div>
+        </div>
+
+        <div class="section frame-section">
+            <label>VGA frame (project 33)</label>
+            <canvas id="frameCanvas" width="320" height="240"></canvas>
+            <div class="row" style="justify-content: center; margin-top: 12px;">
+                <button class="primary" id="captureBtn" onclick="captureFrame()">Capture frame</button>
+            </div>
+            <div class="capture-status" id="captureStatus">Captured automatically when project 33 runs; click to recapture</div>
+        </div>
+
+        <div class="error" id="error"></div>
+    </div>
+
+    <script>
+        let state = { project: 0, clock_running: false, clock_freq_hz: 0, uo_out: 0, ui_in: 0, u_rst_n: false, frame_serial: 0, capture_state: 'idle', capture_row: -1, preview_row: 0 };
+        let editingFreq = false;
+        let rowsPainted = 0;
+        let lastCaptureState = 'idle';
+        let lastCaptureRow = -1;
+        let frameSerialShown = 0;
+        let capturedTimeText = '';
+        let frameFetchInFlight = false;
+        let previewRowShown = 0;
+
+        // 2-bit per channel palette: index = --RRGGBB.
+        const PALETTE = Array.from({length: 256}, (_, i) => {
+            const r = (i >> 4) & 3, g = (i >> 2) & 3, b = i & 3;
+            const e = [0, 85, 170, 255];
+            return [e[r], e[g], e[b], 255];
+        });
+
+        function paintFrame(bytes, startRow, preview = false) {
+            const canvas = document.getElementById('frameCanvas');
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            if (preview) {
+                const rowCount = Math.floor(bytes.length / 320);
+                for (let i = 0; i < rowCount; i++) {
+                    const canvasRow = rowsPainted % 240;
+                    const srcOffset = i * 320;
+                    const dstOffset = canvasRow * 320 * 4;
+                    for (let col = 0; col < 320; col++) {
+                        const idx = bytes[srcOffset + col];
+                        const [rc, gc, bc, ac] = PALETTE[idx];
+                        data[dstOffset + col * 4] = rc;
+                        data[dstOffset + col * 4 + 1] = gc;
+                        data[dstOffset + col * 4 + 2] = bc;
+                        data[dstOffset + col * 4 + 3] = ac;
+                    }
+                    rowsPainted++;
+                }
+            } else {
+                const totalRows = Math.min(240, startRow + Math.floor(bytes.length / 320));
+                for (let row = startRow; row < totalRows; row++) {
+                    const srcOffset = (row - startRow) * 320;
+                    const dstOffset = row * 320 * 4;
+                    for (let col = 0; col < 320; col++) {
+                        const idx = bytes[srcOffset + col];
+                        const [rc, gc, bc, ac] = PALETTE[idx];
+                        data[dstOffset + col * 4] = rc;
+                        data[dstOffset + col * 4 + 1] = gc;
+                        data[dstOffset + col * 4 + 2] = bc;
+                        data[dstOffset + col * 4 + 3] = ac;
+                    }
+                }
+                rowsPainted = totalRows;
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        async function refreshFrame(fullReset = false, preview = false) {
+            if (frameFetchInFlight) return;
+            frameFetchInFlight = true;
+            const from = fullReset ? 0 : (preview ? (rowsPainted % 240) : rowsPainted);
+            try {
+                const res = await fetch('/api/frame_raw?from=' + from);
+                if (!res.ok) return;
+                const buf = await res.arrayBuffer();
+                if (preview && (state.capture_state !== 'running' || state.capture_row >= 0)) {
+                    return;  // aligned now; let the next poll re-fetch in aligned mode
+                }
+                paintFrame(new Uint8Array(buf), from, preview);
+                if (preview) {
+                    previewRowShown = state.preview_row;
+                }
+            } catch (e) {
+                console.error('refreshFrame failed', e);
+            } finally {
+                frameFetchInFlight = false;
+            }
+        }
+
+        // Stream new rows whenever the device reports a fresh frame or makes
+        // progress on a running capture.
+        function maybeRefreshFrame() {
+            const wasRunning = lastCaptureState === 'running';
+            const isRunning = state.capture_state === 'running';
+            const wasPreview = wasRunning && lastCaptureRow < 0;
+            const isPreview = isRunning && state.capture_row < 0;
+            const isAligned = isRunning && state.capture_row >= 0;
+
+            if (isRunning && !wasRunning) {
+                rowsPainted = 0;
+                previewRowShown = 0;
+            }
+            if (wasPreview && isAligned) {
+                rowsPainted = 0;
+            }
+            lastCaptureState = state.capture_state;
+            lastCaptureRow = state.capture_row;
+
+            let shouldFetch = false;
+            let fullReset = false;
+            let preview = false;
+            if (state.frame_serial > 0 && state.frame_serial !== frameSerialShown) {
+                shouldFetch = true;
+                fullReset = true;
+            }
+            if (isAligned && state.capture_row > rowsPainted - 1) {
+                shouldFetch = true;
+            }
+            if (isPreview && state.preview_row > previewRowShown) {
+                shouldFetch = true;
+                preview = true;
+            }
+
+            if (shouldFetch) {
+                refreshFrame(fullReset, preview);
+            }
+        }
+
+        function updateCaptureStatus() {
+            const status = document.getElementById('captureStatus');
+            if (state.capture_state === 'running') {
+                if (state.capture_row < 0) {
+                    if (state.preview_row > 0) {
+                        status.textContent = 'syncing… (live preview)';
+                    } else {
+                        status.textContent = 'syncing…';
+                    }
+                } else {
+                    const pct = Math.round(state.capture_row / 240 * 100);
+                    status.textContent = `capturing… row ${state.capture_row}/240 (${pct}%)`;
+                }
+            } else if (state.capture_state === 'failed') {
+                status.textContent = 'Capture failed';
+            } else if ((state.capture_state === 'ok' || state.capture_state === 'idle') && state.frame_serial > 0) {
+                if (state.frame_serial !== frameSerialShown) {
+                    frameSerialShown = state.frame_serial;
+                    capturedTimeText = new Date().toLocaleTimeString();
+                }
+                status.textContent = 'Captured ' + capturedTimeText;
+            } else {
+                status.textContent = 'Captured automatically when project 33 runs; click to recapture';
+            }
+        }
+
+        async function captureFrame() {
+            document.getElementById('error').textContent = '';
+            try {
+                // Auto-select the VGA project and release reset, then capture.
+                // Await the immediate HTTP responses of the preamble POSTs so the
+                // capture POST cannot overtake them on parallel connections.
+                if (state.project !== 33) {
+                    await fetch('/api/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 33 }) });
+                }
+                if (state.u_rst_n === false) {
+                    await fetch('/api/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: false }) });
+                }
+                // Read the immediate response so 409s surface to the user.
+                const res = await fetch('/api/capture', { method: 'POST' });
+                if (res.status === 409) {
+                    document.getElementById('captureStatus').textContent = 'Capture already in progress';
+                } else if (!res.ok) {
+                    document.getElementById('error').textContent = `Capture failed: ${res.status}`;
+                }
+            } catch (e) {
+                document.getElementById('error').textContent = e.message;
+            }
+        }
+
+        function initLeds() {
+            const container = document.getElementById('leds');
+            for (let i = 7; i >= 0; i--) {
+                const led = document.createElement('div');
+                led.className = 'led';
+                led.innerHTML = `<div class="led-dot" id="led${i}"></div><div class="led-label">[${i}]</div>`;
+                container.appendChild(led);
+            }
+        }
+
+        async function api(path, body) {
+            document.getElementById('error').textContent = '';
+            try {
+                const opts = body ? {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                } : {};
+                const res = await fetch(path, opts);
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`${res.status}: ${text}`);
+                }
+                // Merge so a missing field can't kill updateUi below.
+                state = { ...state, ...await res.json() };
+                updateUi();
+            } catch (e) {
+                document.getElementById('error').textContent = e.message;
+            }
+        }
+
+        function updateUi() {
+            document.getElementById('projectStatus').textContent = `Current: ${state.project}`;
+            const projectInput = document.getElementById('projectInput');
+            if (document.activeElement !== projectInput) {
+                projectInput.value = state.project;
+            }
+
+            if (!editingFreq) {
+                document.getElementById('freqValue').textContent = state.clock_freq_hz.toLocaleString();
+            }
+            document.getElementById('runBtn').textContent = state.clock_running ? 'Stop' : 'Run';
+            document.getElementById('clockStatus').textContent = state.clock_running ? 'Running' : 'Stopped';
+
+            for (let i = 0; i < 8; i++) {
+                const on = (state.uo_out >> i) & 1;
+                document.getElementById(`led${i}`).classList.toggle('on', on);
+            }
+            document.getElementById('uoOutValue').textContent =
+                `0b${state.uo_out.toString(2).padStart(8, '0')} (0x${state.uo_out.toString(16).padStart(2, '0').toUpperCase()})`;
+
+            const tileCheck = document.getElementById('tileCheck');
+            const solidColorCheck = document.getElementById('solidColorCheck');
+            const resetCheck = document.getElementById('resetCheck');
+            if (document.activeElement !== tileCheck) tileCheck.checked = (state.ui_in & 0x01) !== 0;
+            if (document.activeElement !== solidColorCheck) solidColorCheck.checked = (state.ui_in & 0x02) !== 0;
+            if (document.activeElement !== resetCheck) resetCheck.checked = !state.u_rst_n;
+            document.getElementById('uiInStatus').textContent =
+                `ui_in=0x${state.ui_in.toString(16).padStart(2, '0').toUpperCase()}, u_rst_n=${state.u_rst_n ? 'HIGH (released)' : 'LOW (asserted)'}`;
+            maybeRefreshFrame();
+            updateCaptureStatus();
+        }
+
+        function selectProject() {
+            const project = parseInt(document.getElementById('projectInput').value, 10);
+            api('/api/select', { project });
+        }
+
+        function setClock(freq) {
+            api('/api/clock', { running: true, freq_hz: freq });
+        }
+
+        function toggleClock() {
+            api('/api/clock', { running: !state.clock_running, freq_hz: state.clock_freq_hz || 1000 });
+        }
+
+        function stepClock() {
+            api('/api/step', {});
+        }
+
+        function setUiIn() {
+            const tile = document.getElementById('tileCheck').checked ? 1 : 0;
+            const solid = document.getElementById('solidColorCheck').checked ? 2 : 0;
+            api('/api/ui_in', { ui_in: tile | solid });
+        }
+
+        function setReset() {
+            const assert = document.getElementById('resetCheck').checked;
+            api('/api/reset', { reset: assert });
+        }
+
+        function editFreq() {
+            if (editingFreq) return;
+            editingFreq = true;
+            const span = document.getElementById('freqValue');
+            const current = state.clock_freq_hz || 1000;
+            span.innerHTML = `<input type="number" id="freqInput" value="${current}" min="10" max="100000">`;
+            const input = document.getElementById('freqInput');
+            input.focus();
+            input.select();
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') saveFreq();
+                if (e.key === 'Escape') { editingFreq = false; updateUi(); }
+            });
+            input.addEventListener('blur', saveFreq);
+        }
+
+        function saveFreq() {
+            if (!editingFreq) return;
+            const input = document.getElementById('freqInput');
+            const freq = parseInt(input.value, 10);
+            editingFreq = false;
+            if (!isNaN(freq) && freq > 0) {
+                api('/api/clock', { running: true, freq_hz: freq });
+            } else {
+                updateUi();
+            }
+        }
+
+        initLeds();
+        api('/api/state');
+        setInterval(() => api('/api/state'), 250);
+    </script>
+</body>
+</html>
