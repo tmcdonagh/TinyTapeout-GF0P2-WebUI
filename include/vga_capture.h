@@ -36,6 +36,11 @@ uint32_t vga_frame_serial();
 // next capture starts).  Wraps the frame buffer at VGA_FRAME_H.
 uint32_t vga_preview_row();
 
+// Effective clock frequency used during manual frame capture (Hz).
+// A half-period of 2 µs gives a 4 µs full period → 250 kHz.
+constexpr uint32_t VGA_CAPTURE_CLOCK_HZ = 250000;
+uint32_t vga_capture_clock_hz();
+
 // Request that a fresh frame be captured when project 33 is running.
 // Call vga_cache_service() from the main loop to act on the request.
 void vga_cache_request();

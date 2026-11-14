@@ -38,7 +38,8 @@ namespace {
         JsonDocument doc;
         doc["project"] = current_project();
         doc["clock_running"] = clock_running();
-        doc["clock_freq_hz"] = clock_frequency();
+        doc["clock_freq_hz"] = vga_capture_busy() ? vga_capture_clock_hz()
+                                                  : clock_frequency();
         doc["uo_out"] = read_uo_out();
         doc["ui_in"] = ui_in_value();
         doc["u_rst_n"] = digitalRead(PIN_U_RST_N) == HIGH;
@@ -89,7 +90,7 @@ namespace {
         }
 
         bool running = doc["running"] | clock_running();
-        uint32_t freq_hz = doc["freq_hz"] | clock_frequency();
+        uint32_t freq_hz = doc["freq_hz"] | clock_target_frequency();
 
         if (!running) {
             clock_stop();

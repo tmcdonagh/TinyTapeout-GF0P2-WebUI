@@ -29,7 +29,8 @@ constexpr int PIXELS_TO_SKIP = 2;
 constexpr int LINES_TO_SKIP = 2;
 
 // Manual clock half-period.  2 us keeps a full frame capture under ~2 s.
-constexpr unsigned long STEP_HALF_PERIOD_US = 2;
+constexpr unsigned long STEP_HALF_PERIOD_US =
+    1000000UL / (2 * tt::VGA_CAPTURE_CLOCK_HZ);
 
 // Largest number of manual clock steps we are willing to wait for a sync
 // edge (a full line is 800 clocks, a full frame ~420k).
@@ -274,6 +275,10 @@ uint32_t vga_preview_row() {
 
 const uint8_t* vga_frame_buffer() {
     return g_frame_buffer;
+}
+
+uint32_t vga_capture_clock_hz() {
+    return VGA_CAPTURE_CLOCK_HZ;
 }
 
 void vga_cache_request() {

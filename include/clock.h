@@ -21,4 +21,8 @@ bool clock_running();
 // Return the current clock frequency, or 0 if stopped.
 uint32_t clock_frequency();
 
+// Return the last configured clock frequency (set by clock_start()), even if
+// the clock is currently stopped. Returns 0 if no frequency has been set.
+uint32_t clock_target_frequency();
+
 }  // namespace tt

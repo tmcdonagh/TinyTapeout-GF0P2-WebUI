@@ -8,6 +8,7 @@ namespace tt {
 namespace {
     bool g_running = false;
     uint32_t g_freq_hz = 0;
+    uint32_t g_target_freq_hz = 0;
     hw_timer_t* g_timer = nullptr;
     volatile bool g_clk_state = false;
 
@@ -35,6 +36,7 @@ void clock_start(uint32_t freq_hz) {
     clock_stop();
 
     g_freq_hz = clamp_freq(freq_hz);
+    g_target_freq_hz = g_freq_hz;
 
     // Timer ticks at 1 MHz.  Alarm fires every half period (toggle mode).
     g_timer = timerBegin(1000000);
@@ -82,6 +84,10 @@ bool clock_running() {
 
 uint32_t clock_frequency() {
     return g_running ? g_freq_hz : 0;
+}
+
+uint32_t clock_target_frequency() {
+    return g_target_freq_hz;
 }
 
 }  // namespace tt
