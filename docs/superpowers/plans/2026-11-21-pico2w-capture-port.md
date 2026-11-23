@@ -2,6 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **RESUMING THIS PLAN?** The execution ledger is committed at
+> `docs/superpowers/sdd/2026-11-21-pico2w-capture-port/progress.md` (the
+> live `.superpowers/sdd/` workspace is git-ignored and may not exist in
+> your checkout). Copy that file to
+> `.superpowers/sdd/2026-11-21-pico2w-capture-port/progress.md` before
+> resuming: its first line names this plan, tasks with a `complete` line
+> are done, and every deviation from this plan is recorded there as a
+> numbered `Ruling:` line. As of the last update, all firmware tasks are
+> complete and verified on hardware; only Tom's final phone pass and the
+> commit/merge decision remained.
+
 **Goal:** Port the TTGF0P2 web showcase to a Raspberry Pi Pico 2 W with PIO-driven VGA capture, so a full 320×240 frame takes ≤50 ms instead of ~5 s, all 52 projects are selectable from the web UI, and project 33 shows a continuously animating screensaver.
 
 **Architecture:** New `pico/` PlatformIO sub-project (arduino-pico core) alongside the untouched ESP32 firmware. Two PIO state machines: SM0 generates the chip clock, SM1 samples the 8 `uo_out` pins (GP2–GP9, contiguous) every 2nd clock; DMA moves one full frame period (210,000 samples) into a static ring; the CPU extracts the aligned 320×240 frame and re-arms continuously while project 33 is selected. Web endpoints, captive portal, and serial commands keep the ESP32 API surface.

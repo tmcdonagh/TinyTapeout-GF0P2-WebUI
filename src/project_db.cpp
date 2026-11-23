@@ -23,7 +23,7 @@ const char JSON_33[] PROGMEM =
     "\"uo\":[\"R0\",\"G0\",\"B0\",\"vsync\",\"R1\",\"G1\",\"B1\",\"hsync\"],"
     "\"uio\":[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"]},"
     "\"uio_direction\":\"0x00\","
-    "\"inputs\":[],"
+    "\"inputs\":[{\"id\":\"tile\",\"type\":\"toggle\",\"bit\":0,\"label\":\"Tile logos\"},{\"id\":\"solid_color\",\"type\":\"toggle\",\"bit\":1,\"label\":\"Solid color\"}],"
     "\"outputs\":[{\"type\":\"vga_canvas\"}]"
     "}";
 

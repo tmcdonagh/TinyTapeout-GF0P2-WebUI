@@ -29,6 +29,7 @@ void select_project(uint16_t project) {
     // mux. (Replaces the ESP32 build's 409 busy-guards: captures are ~17-50
     // ms, so abort-and-restart is cheaper than blocking.)
     vga_capture_abort();
+    vga_capture_reset_origin();
 
     // Reset ui_in and uio to safe defaults before changing projects.
     set_ui_in(0);

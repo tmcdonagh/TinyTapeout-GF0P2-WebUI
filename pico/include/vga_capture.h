@@ -53,6 +53,9 @@ void vga_capture_service();
 
 // Abort a running capture (control-precedence path).
 void vga_capture_abort();
+// Re-calibrate the extraction origin (call on project selection - the
+// locked origin is specific to the selected design's sync geometry).
+void vga_capture_reset_origin();
 
 // Synthetic-ring extraction self-test ('E' serial command).
 bool vga_capture_self_test();

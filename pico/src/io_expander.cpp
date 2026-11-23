@@ -52,6 +52,12 @@ bool io_expander_init() {
     Wire1.setSCL(27);  // GP27 = I2C1 SCL
     Wire1.begin();
     Wire1.setClock(I2C_FREQ);
+    // Bounded waits WITH bus recovery: on a timeout the core's handler
+    // pulses SCL up to 9x to release a slave stuck mid-transaction (the
+    // software equivalent of the power cycle) and re-inits the
+    // peripheral. Without reset_with_timeout=true a wedged MCP23017
+    // stays wedged until the next unplug.
+    Wire1.setTimeout(25, true);
 
     // Probe: try the Waveshare default address first, then the
     // solder-bridged alternative.

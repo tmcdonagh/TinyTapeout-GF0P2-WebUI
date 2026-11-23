@@ -171,6 +171,14 @@
             margin-top: 8px;
             min-height: 1.2em;
         }
+        .gp-btn {
+            touch-action: none;          /* pointer events, not page scroll */
+            -webkit-user-select: none;
+            user-select: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+        }
         .widget-panel {
             margin-top: 10px;
         }
@@ -288,6 +296,34 @@
                 <button class="primary" id="captureBtn" onclick="captureFrame()">Capture frame</button>
             </div>
             <div class="capture-status" id="captureStatus">Click to capture</div>
+            <div class="row" id="captureRateRow" style="justify-content: center; margin-top: 8px; display:none;">
+                <label for="captureRate" style="margin-right: 6px;">Capture clock</label>
+                <select id="captureRate" onchange="setCaptureClock(this.value)">
+                    <option value="1000000">1 MHz</option>
+                    <option value="2000000">2 MHz</option>
+                    <option value="4000000" selected>4 MHz</option>
+                    <option value="8000000">8 MHz</option>
+                    <option value="12500000">12.5 MHz</option>
+                    <option value="25175000">25.175 MHz</option>
+                </select>
+            </div>
+            <div id="gamepadPanel" style="display:none; margin-top: 10px; text-align: center;">
+                <label>Virtual gamepad</label>
+                <div style="display: flex; justify-content: center; align-items: center; gap: 18px; margin-top: 6px;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px;">
+                        <span></span>
+                        <button data-gp="up" class="gp-btn">&#9650;</button>
+                        <span></span>
+                        <button data-gp="left" class="gp-btn">&#9664;</button>
+                        <span></span>
+                        <button data-gp="right" class="gp-btn">&#9654;</button>
+                        <span></span>
+                        <button data-gp="down" class="gp-btn">&#9660;</button>
+                        <span></span>
+                    </div>
+                    <button data-gp="start" class="gp-btn" style="width: 64px; height: 44px;">Start</button>
+                </div>
+            </div>
         </div>
 
         <div class="error" id="error"></div>
@@ -699,6 +735,56 @@
             }
         }
 
+        // ---- Project 33 virtual gamepad (Pico host: state.gamepad) ----
+        const gamepadState = { start: false, up: false, down: false, left: false, right: false };
+
+        async function postGamepad() {
+            try {
+                const res = await fetch('/api/gamepad', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(gamepadState) });
+                if (!res.ok) throw new Error(res.status);
+            } catch (e) {
+                // A failed press post is retried by the next pointer event;
+                // never surface as red error text for a demo toy.
+                console.error('gamepad post failed', e);
+            }
+        }
+
+        async function releaseAllGamepad() {
+            for (const k of Object.keys(gamepadState)) gamepadState[k] = false;
+            await postGamepad();
+        }
+
+        function initGamepad() {
+            for (const btn of document.querySelectorAll('.gp-btn')) {
+                const key = btn.dataset.gp;
+                const press = (e) => {
+                    e.preventDefault();
+                    if (!gamepadState[key]) {
+                        gamepadState[key] = true;
+                        postGamepad();
+                    }
+                };
+                const release = (e) => {
+                    if (e) e.preventDefault();
+                    if (gamepadState[key]) {
+                        gamepadState[key] = false;
+                        postGamepad();
+                    }
+                };
+                btn.addEventListener('pointerdown', press);
+                btn.addEventListener('pointerup', release);
+                btn.addEventListener('pointerleave', release);
+                btn.addEventListener('pointercancel', release);
+            }
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) releaseAllGamepad();
+            });
+        }
+
+        function setCaptureClock(hz) {
+            api('/api/capture_clock', { hz: parseInt(hz, 10) });
+        }
+
         async function api(path, body) {
             document.getElementById('error').textContent = '';
             try {
@@ -768,6 +854,19 @@
             document.getElementById('runBtn').textContent = state.clock_running ? 'Stop' : 'Run';
             document.getElementById('clockStatus').textContent = state.clock_running ? 'Running' : 'Stopped';
 
+            // Pico-only project 33 extras: degrade to hidden when the host
+            // doesn't report them (ESP32 build).
+            const is33 = state.project === 33;
+            const rateRow = document.getElementById('captureRateRow');
+            const rateSel = document.getElementById('captureRate');
+            const showRate = is33 && state.capture_hz !== undefined;
+            rateRow.style.display = showRate ? 'flex' : 'none';
+            if (showRate && document.activeElement !== rateSel && rateSel.value !== String(state.capture_hz)) {
+                rateSel.value = String(state.capture_hz);
+            }
+            document.getElementById('gamepadPanel').style.display =
+                is33 && state.gamepad ? 'block' : 'none';
+
             updateOutputWidgets();
             maybeRefreshFrame();
             updateCaptureStatus();
@@ -818,6 +917,7 @@
         }
 
         loadProjects();
+        initGamepad();
         api('/api/state');
         setInterval(() => api('/api/state'), 250);
     </script>

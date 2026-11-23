@@ -40,6 +40,11 @@ constexpr size_t DISPLAY_SPAN =
 static_assert(DISPLAY_SPAN <= static_cast<size_t>(RING_SAMPLES),
               "display span overruns the capture ring");
 
+// Origin verification: a legit arm jitters +-a few samples (absorbed);
+// an arm that lands off by more than this means the frame's geometry is
+// torn/rotated and the frame must not publish (~10 px worth of samples).
+constexpr int ORIGIN_TOLERANCE_SAMPLES = 40;
+
 // State machines inside PIO0.
 constexpr uint SM_CLK = 0;
 constexpr uint SM_SAMPLE = 1;
@@ -151,6 +156,17 @@ void compute_delays(uint32_t chip_clk) {
     g_sample_delay = static_cast<uint8_t>(s);
 }
 
+// Extraction origin lock: the first successful extraction calibrates the
+// display origin (via the hsync-anchor search below); every later frame in
+// this selection REUSES the constant. The per-frame anchor can flip between
+// adjacent lines' hsync falls (arm/retarget jitter ~samples), which renders
+// as every-other-frame jumping by ~1 line / a few px - the "old film out of
+// sync" judder. A locked origin makes that impossible; the residual
+// +-1-sample arm jitter is invisible. Reset on selection or capture-clock
+// change (the confirm delay is rate-dependent in samples).
+int g_locked_origin = -1;
+uint32_t g_origin_mismatch = 0;
+
 // Copy the frame into g_frame_buffer. The capture is seek-aligned to the
 // VSync fall, but that fall lands at a fixed MID-LINE hpos (~56 on this
 // chip), so the display origin must be anchored to HSync like the legacy
@@ -170,8 +186,27 @@ bool extract_frame() {
     }
     if (!found) return false;
 
-    const size_t origin = h_fall + H_BACK_SAMPLES +
-                          static_cast<size_t>(V_TOP_LINES) * SAMPLES_PER_LINE;
+    const int found_origin = static_cast<int>(h_fall) + H_BACK_SAMPLES +
+                             static_cast<int>(V_TOP_LINES) * SAMPLES_PER_LINE;
+    if (g_locked_origin < 0) {
+        g_locked_origin = found_origin;
+        g_origin_mismatch = 0;
+    } else if (found_origin - g_locked_origin > ORIGIN_TOLERANCE_SAMPLES ||
+               g_locked_origin - found_origin > ORIGIN_TOLERANCE_SAMPLES) {
+        // This capture's arm landed off-alignment: the ring content is
+        // rotated relative to the locked origin, and publishing it would
+        // show a frame torn/rolled by the offset. Reject (the continuous
+        // re-arm recaptures within ~150 ms; the last good frame stays).
+        // After several consecutive mismatches the geometry itself must
+        // have changed (reset/glitch): re-lock on the next success.
+        if (++g_origin_mismatch >= 5) g_locked_origin = -1;
+        ++g_reject_count;
+        Serial.println("[capture] REJECTED (origin mismatch - arm off alignment)");
+        return false;
+    } else {
+        g_origin_mismatch = 0;
+    }
+    const int origin = g_locked_origin;
     g_non_black = 0;
     for (int r = 0; r < VGA_FRAME_H; ++r) {
         size_t line = origin + static_cast<size_t>(2 * r) * SAMPLES_PER_LINE;
@@ -452,6 +487,12 @@ void vga_capture_abort() {
     Serial.println("[capture] aborted");
 }
 
+void vga_capture_reset_origin() {
+    // A new selection means new video geometry (a different design's
+    // mid-line vsync hpos): re-calibrate the extraction origin.
+    g_locked_origin = -1;
+}
+
 bool vga_capture_busy() {
     return g_state == CaptureState::Running;
 }
@@ -489,6 +530,9 @@ void vga_capture_set_clock_hz(uint32_t chip_clk) {
     if (chip_clk < 1000000) chip_clk = 1000000;
     if (chip_clk > 30000000) chip_clk = 30000000;
     g_clock_hz = chip_clk;
+    // The locked origin is rate-dependent (the fall-confirm delay is a
+    // fixed 100 us = a rate-dependent number of samples).
+    g_locked_origin = -1;
     compute_delays(chip_clk);
     Serial.print("[capture] chip clock set to ");
     Serial.print(chip_clk);
@@ -501,6 +545,9 @@ void vga_capture_set_clock_hz(uint32_t chip_clk) {
 }
 
 bool vga_capture_self_test() {
+    // The synthetic ring's hsync geometry differs from the live video's:
+    // never inherit a locked origin from real captures.
+    g_locked_origin = -1;
     // Fabricate a ring through an independent packing spec (words built
     // directly, not via the read path), then run the real extraction and
     // check the frame lands where the geometry says it must. The capture

@@ -4,6 +4,7 @@
 #include "clock.h"
 #include "vga_capture.h"
 #include "io_expander.h"
+#include "gamepad.h"
 #include "project_db.h"
 #include "wifi_config.h"
 #include "index_html.h"
@@ -13,8 +14,48 @@
 namespace tt {
 
 namespace {
+
     constexpr int HTTP_PORT = 80;
     WebServer server(HTTP_PORT);
+
+    // A single response must never hold the single-threaded loop hostage.
+    // WiFiClient::write's 5 s timeout RESETS on any progress
+    // (ClientContext::_write_from_source re-arms _op_start_time whenever
+    // _write_some moves a byte), so a phone in WiFi power-save ACKing in a
+    // trickle can keep one 77 KB frame fetch alive for MINUTES - freezing
+    // the capture engine, the state polls, and (from the phone's side) the
+    // AP, until the trickle ends. Instead: write only while the TCP send
+    // buffer has room (instant), pump the background with delay(1) while
+    // the peer drains, and cut the connection at the deadline. The phone
+    // just repaints on its next poll.
+    constexpr uint32_t STREAM_DEADLINE_MS = 2000;
+
+    bool stream_body(const uint8_t* data, size_t len, uint32_t deadline_ms) {
+        WiFiClient& c = server.client();
+        while (len > 0) {
+            if (!c.connected() ||
+                static_cast<int32_t>(deadline_ms - millis()) <= 0) {
+                c.stop();
+                return false;
+            }
+            int avail = c.availableForWrite();
+            if (avail <= 0) {
+                delay(1);  // pump lwIP/WiFi background while the peer drains
+                continue;
+            }
+            size_t chunk = len < static_cast<size_t>(avail)
+                               ? len
+                               : static_cast<size_t>(avail);
+            size_t n = c.write(data, chunk);
+            if (n == 0) {
+                c.stop();
+                return false;
+            }
+            data += n;
+            len -= n;
+        }
+        return true;
+    }
 
     void send_cors_headers() {
         server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -27,12 +68,33 @@ namespace {
     }
 
     void handle_state() {
+        // Zombie-client gate: a full TCP send buffer means this client is
+        // not draining (phone went to power-save / walked away). Cut it
+        // instead of stalling the loop for 5 s per queued request - the
+        // phone polls 4x/s, so backed-up clients would wedge the server
+        // continuously.
+        if (server.client().availableForWrite() <= 0) {
+            server.client().stop();
+            return;
+        }
         send_cors_headers();
         JsonDocument doc;
         doc["project"] = current_project();
         doc["clock_running"] = clock_running();
-        doc["clock_freq_hz"] = vga_capture_busy() ? vga_capture_clock_hz()
-                                                  : clock_frequency();
+        // Truthful clock reporting: while the capture engine owns the clock
+        // pin (project 33, reset released, no free-run clock requested) the
+        // pin IS being driven - at the capture rate during the DMA phase and
+        // at the seek rate during the (transient) seek. Reporting 0 in the
+        // seek gaps made the UI's clock readout flicker to 0 between
+        // attempts even though the chip never stopped being clocked.
+        doc["clock_freq_hz"] = clock_running()
+                                   ? clock_frequency()
+                                   : (current_project() == 33 &&
+                                              digitalRead(PIN_U_RST_N) == HIGH
+                                          ? vga_capture_clock_hz()
+                                          : 0);
+        doc["capture_hz"] = vga_capture_clock_hz();
+        doc["gamepad"] = true;  // the virtual gamepad endpoint is available
         doc["uo_out"] = read_uo_out();
         doc["ui_in"] = ui_in_value();
         doc["uio_value"] = uio_value();
@@ -69,6 +131,10 @@ namespace {
         String body;
         serializeJson(doc, body);
         server.send(200, "application/json", body);
+        // Connection: close semantics - close NOW instead of letting the
+        // core sit in its 5 s HTTP_MAX_CLOSE_WAIT refusing new accepts
+        // (lwIP drains queued bytes before the FIN, nothing is lost).
+        server.client().stop();
     }
 
     void handle_select() {
@@ -113,6 +179,29 @@ namespace {
             clock_start(freq_hz);
         }
 
+        handle_state();
+    }
+
+    void handle_capture_clock() {
+        send_cors_headers();
+        // A running capture owns the clock pin; abort rather than 409
+        // (same semantics as the serial k<N> command).
+        if (vga_capture_busy()) {
+            vga_capture_abort();
+        }
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, server.arg("plain"));
+        if (err) {
+            server.send(400, "application/json", "{\"error\":\"invalid json\"}");
+            return;
+        }
+        uint32_t hz = doc["hz"] | 0;
+        if (hz < 1000000 || hz > 30000000) {
+            server.send(400, "application/json",
+                        "{\"error\":\"hz must be 1000000..30000000\"}");
+            return;
+        }
+        vga_capture_set_clock_hz(hz);
         handle_state();
     }
 
@@ -179,6 +268,32 @@ namespace {
         }
 
         handle_state();
+    }
+
+    void handle_gamepad() {
+        send_cors_headers();
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, server.arg("plain"));
+        if (err) {
+            server.send(400, "application/json", "{\"error\":\"invalid json\"}");
+            return;
+        }
+        // Full state per request (the UI sends its complete button set on
+        // every change). One ~60 us burst per change; the design holds the
+        // latched state between bursts, and START is edge-detected there,
+        // so a press/release pair toggles manual mode exactly once.
+        GamepadState s;
+        s.start = doc["start"] | false;
+        s.up = doc["up"] | false;
+        s.down = doc["down"] | false;
+        s.left = doc["left"] | false;
+        s.right = doc["right"] | false;
+        gamepad_apply(s);
+
+        String body;
+        serializeJson(doc, body);
+        server.send(200, "application/json", body);
+        server.client().stop();  // no HC_WAIT_CLOSE linger
     }
 
     void handle_reset() {
@@ -340,14 +455,21 @@ namespace {
         build_frame_bmp_header(header);
         server.setContentLength(header.length() +
                                 static_cast<size_t>(tt::VGA_FRAME_W) * tt::VGA_FRAME_H);
+        const uint32_t deadline = millis() + STREAM_DEADLINE_MS;
         server.send(200, "image/bmp", header);
 
-        // Stream the pixel data row by row, bottom-up (BMP order).
+        // Stream the pixel data row by row, bottom-up (BMP order),
+        // bounded by the deadline (see stream_body).
         const uint8_t* fb = tt::vga_frame_buffer();
         for (int row = tt::VGA_FRAME_H - 1; row >= 0; --row) {
-            server.sendContent(reinterpret_cast<const char*>(fb + row * tt::VGA_FRAME_W),
-                               tt::VGA_FRAME_W);
+            if (!stream_body(fb + row * tt::VGA_FRAME_W, tt::VGA_FRAME_W,
+                             deadline)) {
+                return;
+            }
         }
+        // Close now (Connection: close): skips the core's 5 s
+        // HTTP_MAX_CLOSE_WAIT on slow clients; queued bytes still drain.
+        server.client().stop();
     }
 
     void handle_frame_raw() {
@@ -365,11 +487,12 @@ namespace {
         size_t body_len = rows * tt::VGA_FRAME_W;
 
         server.setContentLength(body_len);
+        const uint32_t deadline = millis() + STREAM_DEADLINE_MS;
         server.send(200, "application/octet-stream", "");
         if (body_len > 0) {
-            server.sendContent(reinterpret_cast<const char*>(fb + from * tt::VGA_FRAME_W),
-                               body_len);
+            stream_body(fb + from * tt::VGA_FRAME_W, body_len, deadline);
         }
+        server.client().stop();  // no HC_WAIT_CLOSE linger (see handle_state)
     }
 
     void handle_options() {
@@ -423,10 +546,14 @@ void web_server_init() {
     server.on("/api/select", HTTP_OPTIONS, handle_options);
     server.on("/api/clock", HTTP_POST, handle_clock);
     server.on("/api/clock", HTTP_OPTIONS, handle_options);
+    server.on("/api/capture_clock", HTTP_POST, handle_capture_clock);
+    server.on("/api/capture_clock", HTTP_OPTIONS, handle_options);
     server.on("/api/step", HTTP_POST, handle_step);
     server.on("/api/step", HTTP_OPTIONS, handle_options);
     server.on("/api/ui_in", HTTP_POST, handle_ui_in);
     server.on("/api/ui_in", HTTP_OPTIONS, handle_options);
+    server.on("/api/gamepad", HTTP_POST, handle_gamepad);
+    server.on("/api/gamepad", HTTP_OPTIONS, handle_options);
     server.on("/api/uio", HTTP_POST, handle_uio);
     server.on("/api/uio", HTTP_OPTIONS, handle_options);
     server.on("/api/reset", HTTP_POST, handle_reset);

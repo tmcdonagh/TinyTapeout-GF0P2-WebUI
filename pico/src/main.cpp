@@ -10,6 +10,7 @@
 #include "wifi_config.h"
 #include "dns_server.h"
 #include "web_server.h"
+#include "gamepad.h"
 
 void setup() {
     Serial.begin(115200);
@@ -62,6 +63,15 @@ void setup() {
     Serial.println("  k<N>   set capture chip clock in Hz (1..30 MHz)");
     Serial.println("  a      auto-cycle projects 0-10 (for mux test)");
     Serial.println("  p      slow pulse ctrl_sel_inc for multimeter test");
+
+    // All init and long paths done; every stall path longer than ~2 s is
+    // audited (STA join feeds inside its loop, seek feeds per iteration,
+    // HTTP responses are hard-capped at 2 s by stream_body). Arm the
+    // watchdog LAST: any future wedge now reboots the board in 8 s
+    // instead of needing a manual replug. The boot path already disabled
+    // the (persist-across-reset) watchdog first thing above.
+    watchdog_enable(8000, 1);
+    Serial.println("[boot] watchdog armed (8 s)");
 }
 
 void loop() {
@@ -69,7 +79,21 @@ void loop() {
     tt::wifi_service();
     tt::dns_server_loop();
     tt::web_server_loop();
+    tt::gamepad_service();  // deferred gamepad releases after the hold
     tt::vga_capture_service();
+
+    // 5 s heartbeat: the serial trace for any recurrence of a hang (the
+    // COM9 console keeps the last beats before a wedge - timestamps the
+    // freeze relative to capture/reject counters).
+    static unsigned long last_beat_ms = 0;
+    if (millis() - last_beat_ms >= 5000) {
+        last_beat_ms = millis();
+        Serial.printf("[beat] up=%lus f=%u rej=%u seekfail=%u state=%d heap=%u\n",
+                      millis() / 1000, tt::vga_frame_serial(),
+                      tt::vga_reject_count(), tt::vga_seekfail_count(),
+                      static_cast<int>(tt::vga_capture_status().state),
+                      rp2040.getFreeHeap());
+    }
 
     if (Serial.available()) {
         String line = Serial.readStringUntil('\n');

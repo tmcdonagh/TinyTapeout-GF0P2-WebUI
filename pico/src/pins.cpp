@@ -85,13 +85,21 @@ void set_u_rst_n(bool high) {
 }
 
 void set_ui_in(uint8_t value) {
+    // User-owned ui_in bits are 0-3 and 7; bits 4-6 belong to the project-33
+    // virtual gamepad emulator (gamepad.cpp): user writes are masked AND
+    // those pins are never touched here, so a toggle cannot clobber an
+    // in-flight gamepad burst.
+    value &= 0x8F;
     g_ui_in_value = value;
     for (int i = 0; i < 8; ++i) {
+        if (i >= 4 && i <= 6) continue;  // gamepad emulator's pins
         digitalWrite(PIN_UI_IN[i], (value & (1u << i)) ? HIGH : LOW);
     }
 }
 
 uint8_t ui_in_value() {
+    // The gamepad pins idle low between bursts (the design holds the
+    // latched state internally), so the pin state IS the user bits.
     return g_ui_in_value;
 }
 
