@@ -1,13 +1,12 @@
 #include "mux.h"
 #include "pins.h"
 #include "vga_capture.h"
+#include "project_db.h"
 
 namespace tt {
 
 namespace {
-    uint8_t g_current_project = 0;
-
-    constexpr uint8_t MAX_PROJECT = 51;
+    uint16_t g_current_project = 0;
 
     // Pulse the pin high then return it low. The TT mux increments on the
     // rising edge of ctrl_sel_inc, and the pin should rest low afterwards.
@@ -22,10 +21,10 @@ namespace {
     }
 }
 
-void select_project(uint8_t project) {
-    if (project > MAX_PROJECT) {
-        project = MAX_PROJECT;
-    }
+void select_project(uint16_t project) {
+    // Reset ui_in and uio to safe defaults before changing projects.
+    set_ui_in(0);
+    set_uio_value(0);
 
     // Match the Tiny Tapeout GF0p2 guide bring-up pseudocode:
     //   1. ctrl_sel_rst_n = HIGH
@@ -48,8 +47,16 @@ void select_project(uint8_t project) {
     set_ctrl_ena(false);
     delayMicroseconds(100);
 
-    for (uint8_t i = 0; i < project; ++i) {
+    for (uint16_t i = 0; i < project; ++i) {
         pulse_high(PIN_CTRL_SEL_INC);
+    }
+
+    // Apply project-specific IO configuration from the descriptor.
+    const ProjectDescriptor* desc = project_by_address(project);
+    if (desc != nullptr) {
+        set_uio_direction(desc->uio_direction);
+    } else {
+        set_uio_direction(0x00);  // default to inputs
     }
 
     if (project == 33) {
@@ -70,7 +77,7 @@ void select_project(uint8_t project) {
     g_current_project = project;
 }
 
-uint8_t current_project() {
+uint16_t current_project() {
     return g_current_project;
 }
 

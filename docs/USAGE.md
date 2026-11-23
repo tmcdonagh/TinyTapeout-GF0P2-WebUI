@@ -6,10 +6,15 @@
 2. The phone should show a "Sign in to network" / captive portal notification within a few seconds. Tap it — the web UI opens automatically.
    - If the portal notification does not appear, open a browser and go to `http://192.168.4.1/`.
    - If the page still does not load, make sure mobile data is off for this test; the captive portal normally routes the request over WiFi, but some phones need a moment to switch.
-3. Enter a project number (0–51) and click **Select**.
+3. Choose a project from the **Project** dropdown. Phase 1 showcases are:
+   - **Wafer.space Logo VGA Screensaver** (33)
+   - **Simon Says memory game** (519)
+   - **LEDs Racer** (384)
 4. Use the clock presets or click the pencil to enter a custom frequency.
 5. Click **Run** to start the clock, **Stop** to halt it, or **Step** to advance one cycle.
-6. Watch the `uo_out` LEDs update as the TT chip runs.
+6. The page renders project-specific input and output widgets automatically.
+   - If the optional MCP23017 IO expander is connected, all `ui_in[0:7]` and `uio[0:7]` controls are active.
+   - Without the expander, only the native `ui_in` bits (0, 1, 4) are usable; missing controls are shown disabled.
 
 ## Live frame capture
 

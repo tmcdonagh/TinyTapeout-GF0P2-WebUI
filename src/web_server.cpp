@@ -3,6 +3,8 @@
 #include "mux.h"
 #include "clock.h"
 #include "vga_capture.h"
+#include "io_expander.h"
+#include "project_db.h"
 #include "index_html.h"
 #include <WebServer.h>
 #include <ArduinoJson.h>
@@ -42,12 +44,15 @@ namespace {
                                                   : clock_frequency();
         doc["uo_out"] = read_uo_out();
         doc["ui_in"] = ui_in_value();
+        doc["uio_value"] = uio_value();
+        doc["uio_direction"] = uio_direction();
         doc["u_rst_n"] = digitalRead(PIN_U_RST_N) == HIGH;
         doc["frame_serial"] = vga_frame_serial();
         CaptureStatus status = vga_capture_status();
         doc["capture_state"] = capture_state_to_string(status.state);
         doc["capture_row"] = status.row;
         doc["preview_row"] = vga_preview_row();
+        doc["io_expander_present"] = io_expander_present();
         String body;
         serializeJson(doc, body);
         server.send(200, "application/json", body);
@@ -67,12 +72,12 @@ namespace {
         }
 
         int project = doc["project"] | -1;
-        if (project < 0 || project > 51) {
-            server.send(400, "application/json", "{\"error\":\"project must be 0..51\"}");
+        if (project < 0 || project_by_address(static_cast<uint16_t>(project)) == nullptr) {
+            server.send(400, "application/json", "{\"error\":\"unknown project address\"}");
             return;
         }
 
-        select_project(static_cast<uint8_t>(project));
+        select_project(static_cast<uint16_t>(project));
         handle_state();
     }
 
@@ -130,6 +135,45 @@ namespace {
         handle_state();
     }
 
+    void handle_uio() {
+        send_cors_headers();
+        if (vga_capture_busy()) {
+            send_capture_in_progress();
+            return;
+        }
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, server.arg("plain"));
+        if (err) {
+            server.send(400, "application/json", "{\"error\":\"invalid json\"}");
+            return;
+        }
+
+        if (!io_expander_present()) {
+            server.send(503, "application/json", "{\"error\":\"io expander not present\"}");
+            return;
+        }
+
+        if (doc["direction"].is<int>()) {
+            int direction = doc["direction"];
+            if (direction < 0 || direction > 255) {
+                server.send(400, "application/json", "{\"error\":\"direction must be 0..255\"}");
+                return;
+            }
+            set_uio_direction(static_cast<uint8_t>(direction));
+        }
+
+        if (doc["value"].is<int>()) {
+            int value = doc["value"];
+            if (value < 0 || value > 255) {
+                server.send(400, "application/json", "{\"error\":\"value must be 0..255\"}");
+                return;
+            }
+            set_uio_value(static_cast<uint8_t>(value));
+        }
+
+        handle_state();
+    }
+
     void handle_reset() {
         send_cors_headers();
         if (vga_capture_busy()) {
@@ -156,6 +200,32 @@ namespace {
             return;
         }
         handle_state();
+    }
+
+    void handle_projects() {
+        send_cors_headers();
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (size_t i = 0; i < project_count(); ++i) {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["address"] = project_address(i);
+            obj["title"] = project_title(i);
+            obj["macro"] = project_macro(i);
+        }
+        String body;
+        serializeJson(doc, body);
+        server.send(200, "application/json", body);
+    }
+
+    void handle_project() {
+        send_cors_headers();
+        int address = server.arg("address").toInt();
+        const ProjectDescriptor* desc = project_by_address(static_cast<uint16_t>(address));
+        if (desc == nullptr || desc->json_blob == nullptr) {
+            server.send(404, "application/json", "{\"error\":\"project not found\"}");
+            return;
+        }
+        server.send(200, "application/json", desc->json_blob);
     }
 
     // Build the fixed part of the served BMP (file header + DIB header +
@@ -400,10 +470,14 @@ void web_server_init() {
     server.on("/api/step", HTTP_OPTIONS, handle_options);
     server.on("/api/ui_in", HTTP_POST, handle_ui_in);
     server.on("/api/ui_in", HTTP_OPTIONS, handle_options);
+    server.on("/api/uio", HTTP_POST, handle_uio);
+    server.on("/api/uio", HTTP_OPTIONS, handle_options);
     server.on("/api/reset", HTTP_POST, handle_reset);
     server.on("/api/reset", HTTP_OPTIONS, handle_options);
     server.on("/api/capture", HTTP_POST, handle_capture);
     server.on("/api/capture", HTTP_OPTIONS, handle_options);
+    server.on("/api/projects", HTTP_GET, handle_projects);
+    server.on("/api/project", HTTP_GET, handle_project);
     server.on("/api/frame.bmp", HTTP_GET, handle_frame_bmp);
     server.on("/api/frame.bmp", HTTP_OPTIONS, handle_options);
     server.on("/api/frame_raw", HTTP_GET, handle_frame_raw);

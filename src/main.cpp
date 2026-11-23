@@ -8,10 +8,14 @@
 #include "wifi_config.h"
 #include "web_server.h"
 #include "dns_server.h"
+#include "io_expander.h"
+#include "project_db.h"
 
 void setup() {
     Serial.begin(115200);
     tt::init_pins();
+    tt::io_expander_init();
+    tt::project_db_init();
     delay(1000);
     Serial.println("Tiny Tapeout GF0P2 Web Showcase — boot");
     Serial.print("Reset reason: ");

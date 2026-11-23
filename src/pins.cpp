@@ -1,6 +1,7 @@
 #include "pins.h"
 #include "mux.h"
 #include "vga_capture.h"
+#include "io_expander.h"
 #include <driver/gpio.h>
 #include <soc/gpio_struct.h>
 
@@ -114,6 +115,9 @@ void set_ui_in(uint8_t value) {
             digitalWrite(PIN_UI_IN[i], (value & (1u << i)) ? HIGH : LOW);
         }
     }
+    // MCP23017 (if present) drives all ui_in bits, including the ones
+    // also wired natively.
+    ui_in_write(value);
     if (current_project() == 33) {
         vga_cache_request();
     }
@@ -123,6 +127,30 @@ uint8_t ui_in_value() {
     return g_ui_in_value;
 }
 
+namespace {
+    uint8_t g_uio_value = 0;
+    uint8_t g_uio_dir = 0;
+}
+
+void set_uio_direction(uint8_t output_mask) {
+    g_uio_dir = output_mask;
+    uio_set_direction(output_mask);
+}
+
+uint8_t uio_direction() {
+    return g_uio_dir;
+}
+
+void set_uio_value(uint8_t value) {
+    g_uio_value = value;
+    uio_write(value);
+}
+
+uint8_t uio_value() {
+    g_uio_value = uio_read();
+    return g_uio_value;
+}
+
 void print_pin_diagnostics() {
     Serial.println("--- pin diagnostics ---");
     Serial.print("ctrl_ena=");      Serial.print(digitalRead(PIN_CTRL_ENA));
@@ -130,7 +158,9 @@ void print_pin_diagnostics() {
     Serial.print(" sel_rst_n=");    Serial.print(digitalRead(PIN_CTRL_SEL_RST_N));
     Serial.print(" clk=");          Serial.print(digitalRead(PIN_CLK));
     Serial.print(" u_rst_n=");      Serial.print(digitalRead(PIN_U_RST_N));
-    Serial.print(" ui_in=0x");      Serial.println(g_ui_in_value, HEX);
+    Serial.print(" ui_in=0x");      Serial.print(g_ui_in_value, HEX);
+    Serial.print(" uio_dir=0x");    Serial.print(g_uio_dir, HEX);
+    Serial.print(" uio_val=0x");    Serial.println(g_uio_value, HEX);
 
     uint8_t uo = read_uo_out();
     Serial.print("uo_out=0b");      Serial.print(uo, BIN);

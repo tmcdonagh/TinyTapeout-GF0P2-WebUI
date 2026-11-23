@@ -9,8 +9,8 @@ namespace tt {
 constexpr int PIN_CTRL_ENA = 18;        // SCK
 constexpr int PIN_CTRL_SEL_INC = 23;    // MOSI
 constexpr int PIN_CTRL_SEL_RST_N = 19;  // MISO
-constexpr int PIN_CLK = 22;             // SCL
-constexpr int PIN_U_RST_N = 21;         // SDA (GPIO2 has the onboard LED, which loads the pin and prevents a clean 3.3 V high)
+constexpr int PIN_CLK = 0;              // D5 (was SCL/GPIO22; moved to free hardware I2C)
+constexpr int PIN_U_RST_N = 15;         // A4 (was SDA/GPIO21; moved to free hardware I2C)
 
 // ui_in dedicated inputs (ESP32 outputs -> TT inputs).
 // Only the three wired inputs are mapped; others are -1 (not connected).
@@ -49,9 +49,16 @@ void set_ctrl_sel_inc(bool high);
 void set_ctrl_sel_rst_n(bool high);  // active-low on the wire
 void set_u_rst_n(bool high);          // active-low on the wire
 
-// ui_in dedicated inputs (ESP32 -> TT). Only wired bits are driven.
+// ui_in dedicated inputs (ESP32 -> TT). Wired bits drive native GPIOs;
+// the MCP23017 (if present) drives all 8 bits.
 void set_ui_in(uint8_t value);
 uint8_t ui_in_value();
+
+// uio bidirectional pins (via MCP23017 when present).
+void set_uio_direction(uint8_t output_mask);
+uint8_t uio_direction();
+void set_uio_value(uint8_t value);
+uint8_t uio_value();
 
 // Print current pin states to Serial (for debugging).
 void print_pin_diagnostics();
