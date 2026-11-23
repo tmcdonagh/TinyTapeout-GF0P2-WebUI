@@ -221,11 +221,15 @@ namespace {
         send_cors_headers();
         int address = server.arg("address").toInt();
         const ProjectDescriptor* desc = project_by_address(static_cast<uint16_t>(address));
-        if (desc == nullptr || desc->json_blob == nullptr) {
+        if (desc == nullptr) {
             server.send(404, "application/json", "{\"error\":\"project not found\"}");
             return;
         }
-        server.send(200, "application/json", desc->json_blob);
+        if (desc->json_blob != nullptr) {
+            server.send_P(200, "application/json", desc->json_blob);
+        } else {
+            server.send(200, "application/json", generic_project_json(static_cast<uint16_t>(address)));
+        }
     }
 
     // Build the fixed part of the served BMP (file header + DIB header +

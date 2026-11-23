@@ -1,0 +1,33 @@
+; TTGF0P2 VGA capture: chip clock generator + uo_out sampler.
+;
+; ttclk drives GP10 with a 50% duty clock; both instructions carry the
+; same runtime-patched delay D, giving a chip clock of sysclk / (2 * (1 + D)).
+; (The SM divider stays at 1 whenever possible: the PIO divider can only
+; slow a state machine, and a divider below 1 collapses to a CLKDIV of 0,
+; which halts the SM outright.)
+;
+; ttsample is the frame-aligned sampler's inner loop: it waits on a clock
+; edge (GP10, a PIO-driven pin - the ONLY wait form proven reliable on
+; this rig), delays the mid-eye amount (the `nop`, instruction index 1,
+; patched at runtime for the active chip clock), latches GP2..GP9 into the
+; ISR, and skips every other clock (the 320-wide subsample). Four samples
+; pack per FIFO word (shift left, autopush at 32: first sample = MSB).
+; Frame ALIGNMENT is provided by the CPU-side seek in vga_capture.cpp
+; (wait-in-PIO forms on the externally-driven sync pins were tried and
+; never fire on this setup - see the build log).
+
+.program ttclk
+.wrap_target
+    set pins, 1 [9]
+    set pins, 0 [9]
+.wrap
+
+.program ttsample
+.wrap_target
+    wait 1 gpio, 10      ; clock edge (PIO-driven pin: proven working)
+    nop [3]              ; placeholder, patched at runtime (index 1)
+    in pins, 8
+    wait 0 gpio, 10
+    wait 1 gpio, 10      ; skipped clock
+    wait 0 gpio, 10
+.wrap

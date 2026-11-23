@@ -52,14 +52,29 @@ void select_project(uint16_t project) {
     }
 
     // Apply project-specific IO configuration from the descriptor.
+    // The descriptor's uio_direction describes the CHIP's pin directions
+    // (1 = the design drives that pin), so the host expander must MIRROR
+    // it: inputs wherever the chip drives, outputs wherever it reads.
+    // Passing the mask through un-inverted makes the expander fight the
+    // chip's outputs - bus contention that broke Simon's segments.
+    //
+    // Generic descriptors (json_blob == nullptr) describe an UNDOCUMENTED
+    // design: the chip's real uio directions are unknown, so a stored
+    // 0x00 must NOT be mirrored into 0xFF (all host pins driving low -
+    // direct contention with whatever the design drives). Unknown
+    // directions leave the host expander high-Z (all inputs).
     const ProjectDescriptor* desc = project_by_address(project);
-    if (desc != nullptr) {
-        set_uio_direction(desc->uio_direction);
+    if (desc != nullptr && desc->json_blob != nullptr) {
+        set_uio_direction(static_cast<uint8_t>(~desc->uio_direction & 0xFF));
     } else {
-        set_uio_direction(0x00);  // default to inputs
+        set_uio_direction(0x00);  // unknown design: host keeps uio as inputs
     }
 
-    if (project == 33) {
+    if (project == 0) {
+        // Chip ROM: keep u_rst_n LOW so the ROM auto-increments on each
+        // clock edge (the bring-up recipe).
+        set_u_rst_n(false);
+    } else if (project == 33) {
         // VGA screensaver project: release reset and default to tiled mode so
         // the logo fills the frame.  Request a cached frame capture so the web
         // UI can serve /api/frame.bmp immediately.
@@ -67,7 +82,9 @@ void select_project(uint16_t project) {
         set_u_rst_n(true);
         vga_cache_request();
     } else {
-        set_u_rst_n(false);
+        // Every real design runs with its reset released; the ROM
+        // auto-increment mode is only needed at address 0.
+        set_u_rst_n(true);
     }
     delayMicroseconds(100);
 

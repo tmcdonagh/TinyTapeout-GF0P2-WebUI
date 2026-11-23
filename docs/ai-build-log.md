@@ -42,6 +42,60 @@ Key implementation points:
 
 Measured on hardware: a fresh selection takes ~5.2 s end-to-end (down from ~9.6 s), with ~2.0 s of visible "syncing… (live preview)" followed by the aligned fill.
 
+## Phase 3: The Pico 2 W host (fast capture)
+
+The ESP32's 250 kHz bit-bang capture (~5.2 s per frame) hit its ceiling, so
+the showcase moved to a Raspberry Pi Pico 2 W (RP2350). The design spec and
+implementation plan live in `docs/superpowers/`; the short version of the
+journey:
+
+- Wiring: `uo_out` contiguous on GP2–GP9 so one PIO instruction latches the
+  byte, `clk` on GP10 driven by a PIO state machine, all 8 `ui_in` bits
+  direct, the Waveshare MCP23017 on I2C1 carrying `uio` only.
+- The capture engine: one PIO SM generates the chip clock, a second samples
+  the 8 pins every 2nd clock into DMA (four samples packed per FIFO word,
+  210 KB ring in BSS). If the DMA ever falls behind the sampler (bus
+  contention with WiFi/flash), the frame is detected via the PIO's RXSTALL
+  flag and REJECTED rather than published - a stalled sampler misses
+  samples, which would silently corrupt the fixed-origin line geometry.
+- Bring-up found and fixed, in order: (1) `pio_add_program`'s words needed
+  an explicit copy to actually land (instr_mem read-back is blind, so this
+  was verified by behavior — full-rate DMA timing — not by reading memory
+  back); (2) a fractional SM divider below 1 collapses to a CLKDIV of 0,
+  which halts the state machine outright — the clock rate is now set by
+  patching the PIO program's delay fields at runtime, divider always ≥ 1;
+  (3) PIO `wait` instructions never release on the externally-driven sync
+  pins in this setup (verified with correct encodings, three wait forms,
+  and hsync/vsync bisects), so frame alignment is done by a CPU seek at
+  2 MHz (the VSync pulse is 2 lines wide there, safely pollable with
+  yields while keeping the USB/WiFi background alive; the final fall-to-arm
+  sequence runs with interrupts masked so frames never jitter) — and a
+  review pass then caught the seek running before the mux enable, which
+  had made every selection of project 33 align against an undriven bus;
+  (4) long busy-polls starve the USB background — every long poll now
+  yields; (5) the `uio_direction` descriptor convention is the *chip's*
+  pin directions — the host expander mirrors it inverted, or it fights
+  the design's own uio outputs (bus contention that broke Simon's
+  segments; the pass-through bug was inherited from the ESP32 code,
+  which had never run against real expander hardware).
+- Calibration ramp: clean continuous extracts at 4, 8, 12.5, and 25.175 MHz
+  over dupont jumpers. The shipped default is 4 MHz — favoring a
+  rock-stable image over raw speed, per Tom's call — with the serial `k`
+  command raising it on demand. A frame period at the default is ~105 ms
+  (plus an ~8 MHz seek averaging half a frame period), ~6 fps continuous.
+  A later 1 MHz default (and a "radio destabilization" theory) came from
+  misreading a real firmware hang - see the Phase 4 note below.
+- The web showcase gained the real 52-design address list (the mux space
+  is sparse: 0, 1, 32, ... 615 — the old firmware's 519/384 were the true
+  Simon/LEDs-Racer addresses all along, not counter-wrap tricks; dead
+  slots like 5 select nothing and are rejected by the API), generic cards
+  for un-curated designs, `u_rst_n` released on selection for every design
+  (ROM auto-increment stays at address 0), continuous background recapture
+  while project 33 is selected, and
+  abort-on-control semantics replacing the ESP32's 409 guards (the
+  Pico's single-loop design also means frame reads can never tear, unlike
+  the ESP32's cross-core capture task).
+
 ## Key decisions and gotchas
 
 - **Board definition:** The `firebeetle32` PlatformIO board assumes 16 MB flash, but this module has 4 MB and boot-loops with that definition. The project uses `board = esp32dev` with `board_build.partitions = huge_app.csv`.

@@ -31,7 +31,7 @@ jobs:
           path: |
             ~/.platformio
             ~/.cache/pip
-          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini', 'pico/platformio.ini') }}
           restore-keys: |
             ${{ runner.os }}-platformio-
 
@@ -43,6 +43,9 @@ jobs:
       - name: Build firmware
         run: pio run
 
+      - name: Build Pico 2 W firmware
+        run: pio run -d pico
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -51,6 +54,7 @@ jobs:
             .pio/build/firebeetle32/firmware.bin
             .pio/build/firebeetle32/bootloader.bin
             .pio/build/firebeetle32/partitions.bin
+            pico/.pio/build/pico2w/firmware.uf2
 
       - name: Attach binaries to release
         if: github.event_name == 'release' && github.event.action == 'published'
@@ -60,3 +64,4 @@ jobs:
             .pio/build/firebeetle32/firmware.bin
             .pio/build/firebeetle32/bootloader.bin
             .pio/build/firebeetle32/partitions.bin
+            pico/.pio/build/pico2w/firmware.uf2

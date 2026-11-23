@@ -350,6 +350,9 @@
         }
 
         function isBitAvailable(bit) {
+            // All 8 ui_in bits are native GPIO on the Pico host.
+            // (The ESP32 build omits ui_in_native; undefined -> old logic.)
+            if (state.ui_in_native) return true;
             // Bits 0,1,4 are native; all bits are available if expander present.
             const nativeBits = {0: true, 1: true, 4: true};
             return state.io_expander_present || nativeBits[bit];
@@ -791,7 +794,7 @@
             editingFreq = true;
             const span = document.getElementById('freqValue');
             const current = state.clock_freq_hz || 1000;
-            span.innerHTML = `<input type="number" id="freqInput" value="${current}" min="10" max="100000">`;
+            span.innerHTML = `<input type="number" id="freqInput" value="${current}" min="10" max="25000000">`;
             const input = document.getElementById('freqInput');
             input.focus();
             input.select();

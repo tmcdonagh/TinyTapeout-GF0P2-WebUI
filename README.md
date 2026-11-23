@@ -4,7 +4,8 @@
 
 ## What
 
-ESP32 based web interface to the Tiny Tapeout TTGF0P2 business card chip.
+Raspberry Pi Pico 2 W based web interface to the Tiny Tapeout TTGF0P2
+business card chip, with hardware-driven VGA frame capture.
 
 ## Why
 
@@ -24,11 +25,20 @@ replicate that in functionality as close as possible, with some extras.
 
 ## Features
 
-- Select any TTGF0P2 project (0–51) from a web page.
-- Adjustable project clock: run, stop, set frequency, single-step.
-- Live display of `uo_out[0..7]` as LEDs.
-- No app required. Captive portal opens the web UI automatically when you connect to the AP.
-- **(Slow) VGA frame capture for project 33 (Wafer.space screensaver) with row-by-row streaming.**
+- Select any of the 52 real TTGF0P2 designs from a web page — the
+  datasheet's sparse mux addresses (0, 1, 32, ... 615), with curated
+  widgets for the showcase projects and generic controls for the rest.
+- Adjustable project clock: run, stop, set frequency (10 Hz–25 MHz), single-step.
+- Live display of `uo_out[0..7]` as LEDs; all 8 `ui_in` bits direct GPIO,
+  `uio[0:7]` via the MCP23017 IO expander.
+- **Continuously animating VGA frame capture for project 33
+  (Wafer.space screensaver)** — a PIO state machine clocks the chip while
+  a second samples all 8 pins into DMA, with each capture CPU-aligned to
+  the VSync edge; ~6 fps at the 4 MHz default (the serial `k` command
+  raises it — clean up to 25.175 MHz on this wiring), instead of the
+  ESP32 build's ~5 seconds per frame.
+- No app required. Captive portal opens the web UI automatically when you
+  connect to the AP.
 
 ## AI Usage
 
